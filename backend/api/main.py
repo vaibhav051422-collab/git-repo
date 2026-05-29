@@ -16,6 +16,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import re
 
 from pipeline.indexer  import index_repo, IndexResult, IndexStatus
 
@@ -39,10 +40,38 @@ allowed_origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins     = allowed_origins,
-    allow_credentials = False,
+    allow_credentials = True,
     allow_methods     = ["*"],
     allow_headers     = ["*"],
 )
+
+
+@app.middleware("http")
+async def _ensure_cors_on_errors(request, call_next):
+    """Ensure CORS headers are present even if a handler raises an exception.
+
+    FastAPI/Starlette should add CORS via CORSMiddleware, but in some cases
+    error responses can miss the header. This wrapper logs the traceback and
+    attaches the appropriate `Access-Control-Allow-Origin` header when the
+    request `Origin` is in `allowed_origins`.
+    """
+    from fastapi.responses import PlainTextResponse
+    import traceback
+
+    try:
+        response = await call_next(request)
+    except Exception as exc:  # pragma: no cover - runtime protection
+        traceback.print_exc()
+        response = PlainTextResponse(str(exc), status_code=500)
+
+    origin = request.headers.get("origin")
+    if origin and origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+        if True:  # keep credentials allowed as configured above
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response
 
 
 # ── In-memory job store (swap for Redis in production)
@@ -207,16 +236,39 @@ async def chat(req: ChatRequest):
     # Import here so the API can boot even when AI dependencies are not configured.
     from pipeline.retriever import answer_query
 
-    result = answer_query(
-        query   = req.query,
-        repo_id = req.repo_id,
-        history = req.history,
-        top_k   = req.top_k,
-        provider = req.provider,
-        api_key = req.api_key,
-        chat_model = req.chat_model,
-        embed_model = req.embed_model,
-    )
+    def _sanitize_error(msg: str) -> str:
+        # redact common provider API key patterns and query-string secrets
+        msg = re.sub(r"(?i)(sk-|pcsk_)[A-Za-z0-9_\-]{8,}", "<redacted key>", msg)
+        msg = re.sub(r"(?i)([?&](?:key|api_key)=)[^'\"\s&]+", r"\1<redacted key>", msg)
+        msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "<redacted key>", msg)
+        return msg
+
+    try:
+        result = answer_query(
+            query   = req.query,
+            repo_id = req.repo_id,
+            history = req.history,
+            top_k   = req.top_k,
+            provider = req.provider,
+            api_key = req.api_key,
+            chat_model = req.chat_model,
+            embed_model = req.embed_model,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - runtime protection
+        import traceback
+        traceback.print_exc()
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        reason = getattr(getattr(exc, "response", None), "reason_phrase", None)
+        if status_code and reason:
+            detail = (
+                f"Upstream provider error: {status_code} {reason}. "
+                f"Check the provider, model name, and API key."
+            )
+        else:
+            detail = "Upstream provider error. Check the provider, model name, and API key."
+        raise HTTPException(status_code=502, detail=_sanitize_error(detail))
 
     return ChatResponse(
         answer  = result.answer,

@@ -98,12 +98,23 @@ export default function ChatPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const message = typeof data?.detail === "string"
+          ? data.detail
+          : `Request failed with status ${res.status}`;
+        setMessages(prev => [...prev, {
+          role:    "assistant",
+          content: `⚠ ${message}`,
+        }]);
+        return;
+      }
 
       const assistantMsg: Message = {
         role:    "assistant",
-        content: data.answer,
-        sources: data.sources,
+        content: typeof data?.answer === "string" ? data.answer : "",
+        sources: Array.isArray(data?.sources) ? data.sources : undefined,
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -548,8 +559,9 @@ export default function ChatPage() {
   );
 }
 
-function MessageContent({ content }: { content: string }) {
-  const parts = content.split(/(```[\s\S]*?```)/g);
+function MessageContent({ content }: { content?: string }) {
+  const text = content ?? "";
+  const parts = text.split(/(```[\s\S]*?```)/g);
   return (
     <>
       {parts.map((part, i) => {
