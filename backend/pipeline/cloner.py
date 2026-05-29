@@ -12,6 +12,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 import git  # GitPython
+from git.exc import InvalidGitRepositoryError, NoSuchPathError
 
 from config import CLONE_DIR, GITHUB_TOKEN
 
@@ -76,26 +77,39 @@ def clone_repo(github_url: str, force_reclone: bool = False) -> RepoMeta:
     repo_id     = _repo_id(owner, name)
     local_path  = Path(CLONE_DIR) / repo_id
 
-    # ── Re-clone if requested 
+    # ── Re-clone if requested
     if force_reclone and local_path.exists():
         shutil.rmtree(local_path)
         print(f"[cloner] Removed existing clone at {local_path}")
 
-    # ── Use existing clone 
+    # ── Use existing clone (only when the directory is a valid git repo)
     if local_path.exists():
-        print(f"[cloner] Reusing existing clone at {local_path}")
-        repo = git.Repo(local_path)
-        # Pull latest changes
         try:
-            repo.remotes.origin.pull()
-            print("[cloner] Pulled latest changes")
-        except Exception as e:
-            print(f"[cloner] Warning: pull failed ({e}), using cached clone")
+            repo = git.Repo(local_path)
+            print(f"[cloner] Reusing existing clone at {local_path}")
+            # Pull latest changes
+            try:
+                repo.remotes.origin.pull()
+                print("[cloner] Pulled latest changes")
+            except Exception as e:
+                print(f"[cloner] Warning: pull failed ({e}), using cached clone")
+        except (InvalidGitRepositoryError, NoSuchPathError):
+            # Previous failed clone left a non-empty, non-repo directory.
+            print(f"[cloner] Found invalid clone directory at {local_path}, recreating")
+            shutil.rmtree(local_path)
+            clone_url = _make_clone_url(owner, name)
+            repo = git.Repo.clone_from(
+                clone_url,
+                local_path,
+                depth=1,
+                single_branch=True,
+            )
+            print(f"[cloner] Clone complete ({_count_files(local_path)} files)")
     else:
         # ── Fresh clone ───────────────────────────────────────────────────────
         clone_url = _make_clone_url(owner, name)
         print(f"[cloner] Cloning {owner}/{name} → {local_path}")
-        local_path.mkdir(parents=True, exist_ok=True)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
 
         repo = git.Repo.clone_from(
             clone_url,

@@ -6,10 +6,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── OpenAI ───────────────────────────────────────────────────────────────────
-OPENAI_API_KEY: str   = os.environ["OPENAI_API_KEY"]
-EMBED_MODEL:    str   = os.getenv("EMBED_MODEL", "text-embedding-3-large")
-CHAT_MODEL:     str   = os.getenv("CHAT_MODEL",  "gpt-4o")
+# ── AI providers ────────────────────────────────────────────────────────────
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+EMBED_MODEL:    str = os.getenv("EMBED_MODEL", "text-embedding-3-large")
+CHAT_MODEL:     str = os.getenv("CHAT_MODEL",  "gpt-4o")
+GEMINI_CHAT_MODEL: str = os.getenv("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
+GEMINI_EMBED_MODEL: str = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
 
 # ── Pinecone ─────────────────────────────────────────────────────────────────
 PINECONE_API_KEY:    str = os.environ["PINECONE_API_KEY"]

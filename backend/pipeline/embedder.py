@@ -9,58 +9,42 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
 
-from config import (
-    OPENAI_API_KEY,
-    EMBED_MODEL,
-    PINECONE_API_KEY,
-    PINECONE_INDEX_NAME,
-)
+from config import PINECONE_API_KEY
+from pipeline.ai_clients import AISettings, get_embedding_dimension, get_index_name, normalize_provider, embed_texts
 from pipeline.chunker import Chunk
 
-# Clients
-
-_oai = OpenAI(api_key=OPENAI_API_KEY)
 _pc  = Pinecone(api_key=PINECONE_API_KEY)
-
-# Dimension for text-embedding-3-large
-EMBED_DIM = 3072
 
 #Index bootstrap
 
-def ensure_index() -> Any:
+def ensure_index(settings: AISettings) -> Any:
     """Create the Pinecone index if it doesn't exist yet."""
+    provider = normalize_provider(settings.provider)
+    index_name = get_index_name(provider)
+    embed_model = settings.embed_model or ""
+    embed_dim = get_embedding_dimension(provider, embed_model)
     existing = [idx.name for idx in _pc.list_indexes()]
-    if PINECONE_INDEX_NAME not in existing:
-        print(f"[embedder] Creating Pinecone index '{PINECONE_INDEX_NAME}'…")
+    if index_name not in existing:
+        print(f"[embedder] Creating Pinecone index '{index_name}'…")
         _pc.create_index(
-            name      = PINECONE_INDEX_NAME,
-            dimension = EMBED_DIM,
+            name      = index_name,
+            dimension = embed_dim,
             metric    = "cosine",
             spec      = ServerlessSpec(cloud="aws", region="us-east-1"),
         )
         # Wait for index to be ready
-        while not _pc.describe_index(PINECONE_INDEX_NAME).status["ready"]:
+        while not _pc.describe_index(index_name).status["ready"]:
             print("[embedder] Waiting for index to be ready…")
             time.sleep(2)
         print("[embedder] Index ready ✓")
-    return _pc.Index(PINECONE_INDEX_NAME)
+    return _pc.Index(index_name)
 
 
 # Embedding
 
 EMBED_BATCH = 96   # OpenAI allows up to 2048; keep lower for stability
-
-def _embed_texts(texts: list[str]) -> list[list[float]]:
-    """Embed a batch of texts. Returns list of vectors."""
-    response = _oai.embeddings.create(
-        model = EMBED_MODEL,
-        input = texts,
-    )
-    return [item.embedding for item in response.data]
-
 
 # ── Upsert ────────────────────────────────────────────────────────────────────
 
@@ -87,7 +71,7 @@ def _chunk_to_pinecone_vector(chunk: Chunk, vector: list[float]) -> dict:
     }
 
 
-def embed_and_store(chunks: list[Chunk]) -> int:
+def embed_and_store(chunks: list[Chunk], settings: AISettings) -> int:
     """
     Embed all *chunks* and upsert into Pinecone.
 
@@ -99,7 +83,7 @@ def embed_and_store(chunks: list[Chunk]) -> int:
     if not chunks:
         return 0
 
-    index     = ensure_index()
+    index     = ensure_index(settings)
     namespace = chunks[0].repo_id   # all chunks in a job share the same repo_id
     total     = 0
 
@@ -113,11 +97,11 @@ def embed_and_store(chunks: list[Chunk]) -> int:
         texts  = [c.text for c in batch]
 
         try:
-            embeddings = _embed_texts(texts)
+            embeddings = embed_texts(texts, settings)
         except Exception as e:
             print(f"[embedder] Embedding batch {i//EMBED_BATCH} failed: {e}, retrying…")
             time.sleep(2)
-            embeddings = _embed_texts(texts)   # one retry
+            embeddings = embed_texts(texts, settings)   # one retry
 
         for chunk, vec in zip(batch, embeddings):
             vectors_to_upsert.append(_chunk_to_pinecone_vector(chunk, vec))
@@ -135,8 +119,9 @@ def embed_and_store(chunks: list[Chunk]) -> int:
     return total
 
 
-def delete_repo_index(repo_id: str) -> None:
+def delete_repo_index(repo_id: str, settings: AISettings) -> None:
     """Remove all vectors for a repo (e.g. on re-index or deletion)."""
-    index = ensure_index()
+    index = ensure_index(settings)
     index.delete(delete_all=True, namespace=repo_id)
     print(f"[embedder] Deleted namespace '{repo_id}'")
+# py -m uvicorn api.main:app --reload --port 8000

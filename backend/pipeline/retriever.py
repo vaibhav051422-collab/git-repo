@@ -11,21 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from openai import OpenAI
-
 from config import (
-    OPENAI_API_KEY,
-    EMBED_MODEL,
-    CHAT_MODEL,
     TOP_K,
-    PINECONE_API_KEY,
-    PINECONE_INDEX_NAME,
 )
+from pipeline.ai_clients import AISettings, answer_text, embed_texts, normalize_provider
 from pipeline.embedder import ensure_index
-
-# Clients 
-
-_oai = OpenAI(api_key=OPENAI_API_KEY)
 
 
 # Data models 
@@ -65,17 +55,10 @@ Rules:
 """
 
 
-#  Query embedding
-
-def _embed_query(query: str) -> list[float]:
-    response = _oai.embeddings.create(model=EMBED_MODEL, input=[query])
-    return response.data[0].embedding
-
-
 #  Retrieval 
 
-def _retrieve(query_vec: list[float], repo_id: str, top_k: int) -> list[SourceChunk]:
-    index   = ensure_index()
+def _retrieve(query_vec: list[float], repo_id: str, top_k: int, settings: AISettings) -> list[SourceChunk]:
+    index   = ensure_index(settings)
     results = index.query(
         vector    = query_vec,
         top_k     = top_k,
@@ -123,6 +106,10 @@ def answer_query(
     repo_id: str,
     history: list[Message] | None = None,
     top_k:   int = TOP_K,
+    provider: str = "openai",
+    api_key: str | None = None,
+    chat_model: str | None = None,
+    embed_model: str | None = None,
 ) -> ChatAnswer:
     """
     Answer *query* about *repo_id*.
@@ -136,11 +123,18 @@ def answer_query(
     Returns:
         ChatAnswer with the synthesised answer and cited sources.
     """
+    settings = AISettings(
+        provider=normalize_provider(provider),
+        api_key=api_key,
+        chat_model=chat_model,
+        embed_model=embed_model,
+    )
+
     # 1. Embed the query
-    query_vec = _embed_query(query)
+    query_vec = embed_texts([query], settings)[0]
 
     # 2. Retrieve relevant chunks
-    sources = _retrieve(query_vec, repo_id, top_k)
+    sources = _retrieve(query_vec, repo_id, top_k, settings)
 
     if not sources:
         return ChatAnswer(
@@ -150,35 +144,18 @@ def answer_query(
             repo_id = repo_id,
         )
 
-    # 3. Build context
+    # 3. Build context and generate the answer
     context = _build_context(sources)
-
-    # 4. Construct messages
-    messages: list[Message] = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    # Inject prior turns (last 6 to keep context window sane)
-    if history:
-        messages.extend(history[-6:])
-
-    # Final user turn includes retrieved context
-    user_content = (
-        f"Retrieved context from the repository:\n\n{context}\n\n"
-        f"---\n\nQuestion: {query}"
+    answer_text_result = answer_text(
+        settings=settings,
+        system_prompt=SYSTEM_PROMPT,
+        history=history,
+        retrieved_context=context,
+        question=query,
     )
-    messages.append({"role": "user", "content": user_content})
-
-    # 5. Call GPT-4o
-    response = _oai.chat.completions.create(
-        model       = CHAT_MODEL,
-        messages    = messages,
-        temperature = 0.2,       # low temp for factual code answers
-        max_tokens  = 1_500,
-    )
-
-    answer_text = response.choices[0].message.content or ""
 
     return ChatAnswer(
-        answer  = answer_text,
+        answer  = answer_text_result,
         sources = sources,
         query   = query,
         repo_id = repo_id,

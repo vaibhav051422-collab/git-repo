@@ -9,15 +9,15 @@ FastAPI app exposing 3 endpoints:
 """
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field
 
 from pipeline.indexer  import index_repo, IndexResult, IndexStatus
-from pipeline.retriever import answer_query, ChatAnswer, Message
 
 app = FastAPI(
     title       = "RepoChat API",
@@ -27,10 +27,19 @@ app = FastAPI(
 
 # ── CORS
 
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = ["*"],   # tighten in production
-    allow_credentials = True,
+    allow_origins     = allowed_origins,
+    allow_credentials = False,
     allow_methods     = ["*"],
     allow_headers     = ["*"],
 )
@@ -45,6 +54,10 @@ _jobs: dict[str, dict] = {}    # job_id → {status, result, error}
 class AnalyseRequest(BaseModel):
     github_url:    str
     force_reindex: bool = False
+    provider:      str = "openai"
+    api_key:       str | None = None
+    chat_model:    str | None = None
+    embed_model:   str | None = None
 
 
 class AnalyseResponse(BaseModel):
@@ -53,7 +66,15 @@ class AnalyseResponse(BaseModel):
     message: str
 
 
-def _run_index_job(job_id: str, github_url: str, force_reindex: bool):
+def _run_index_job(
+    job_id: str,
+    github_url: str,
+    force_reindex: bool,
+    provider: str,
+    api_key: str | None,
+    chat_model: str | None,
+    embed_model: str | None,
+):
     """Background task — runs the full pipeline and updates job store."""
     _jobs[job_id]["status"] = IndexStatus.CLONING
 
@@ -61,7 +82,15 @@ def _run_index_job(job_id: str, github_url: str, force_reindex: bool):
         _jobs[job_id]["status"]  = status
         _jobs[job_id]["message"] = msg
 
-    result: IndexResult = index_repo(github_url, force_reindex, on_progress)
+    result: IndexResult = index_repo(
+        github_url,
+        force_reindex,
+        on_progress,
+        provider=provider,
+        api_key=api_key,
+        chat_model=chat_model,
+        embed_model=embed_model,
+    )
     _jobs[job_id]["result"] = result
 
     if result.status == IndexStatus.FAILED:
@@ -92,7 +121,14 @@ async def analyse(req: AnalyseRequest, background_tasks: BackgroundTasks):
     }
 
     background_tasks.add_task(
-        _run_index_job, job_id, req.github_url, req.force_reindex
+        _run_index_job,
+        job_id,
+        req.github_url,
+        req.force_reindex,
+        req.provider,
+        req.api_key,
+        req.chat_model,
+        req.embed_model,
     )
 
     return AnalyseResponse(
@@ -136,8 +172,12 @@ async def get_status(job_id: str):
 class ChatRequest(BaseModel):
     query:   str
     repo_id: str
-    history: list[Message] = []
+    history: list[dict[str, str]] = Field(default_factory=list)
     top_k:   int = 8
+    provider:    str = "openai"
+    api_key:     str | None = None
+    chat_model:  str | None = None
+    embed_model: str | None = None
 
 
 class SourceOut(BaseModel):
@@ -164,11 +204,18 @@ async def chat(req: ChatRequest):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    result: ChatAnswer = answer_query(
+    # Import here so the API can boot even when AI dependencies are not configured.
+    from pipeline.retriever import answer_query
+
+    result = answer_query(
         query   = req.query,
         repo_id = req.repo_id,
         history = req.history,
         top_k   = req.top_k,
+        provider = req.provider,
+        api_key = req.api_key,
+        chat_model = req.chat_model,
+        embed_model = req.embed_model,
     )
 
     return ChatResponse(

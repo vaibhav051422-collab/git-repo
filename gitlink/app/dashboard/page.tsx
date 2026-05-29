@@ -4,6 +4,10 @@ import { useRouter } from "next/navigation";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+type AIProvider = "openai" | "gemini";
+
+const AI_SETTINGS_KEY = "repochat_ai_settings";
+
 type JobStatus = "idle" | "pending" | "cloning" | "chunking" | "embedding" | "done" | "failed";
 
 const STATUS_STEPS: Record<string, number> = {
@@ -29,7 +33,33 @@ export default function DashboardPage() {
   const [chunks, setChunks]     = useState<number | null>(null);
   const [error, setError]       = useState("");
   const [repoName, setRepoName] = useState("");
+  const [provider, setProvider] = useState<AIProvider>("openai");
+  const [apiKey, setApiKey]     = useState("");
   const pollRef                 = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(AI_SETTINGS_KEY);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored) as { provider?: AIProvider; apiKey?: string };
+      if (parsed.provider === "openai" || parsed.provider === "gemini") {
+        setProvider(parsed.provider);
+      }
+      if (typeof parsed.apiKey === "string") {
+        setApiKey(parsed.apiKey);
+      }
+    } catch {
+      // Ignore malformed stored settings.
+    }
+  }, []);
+
+  const persistSettings = (nextProvider: AIProvider, nextApiKey: string) => {
+    localStorage.setItem(
+      AI_SETTINGS_KEY,
+      JSON.stringify({ provider: nextProvider, apiKey: nextApiKey }),
+    );
+  };
 
   // ── Parse repo name from URL ──────────────────────────────────────────────
   const parseRepoName = (ghUrl: string) => {
@@ -46,12 +76,17 @@ export default function DashboardPage() {
     setError("");
     setStatus("pending");
     setRepoName(parseRepoName(url));
+    persistSettings(provider, apiKey);
 
     try {
       const res  = await fetch(`${API}/analyse`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ github_url: url }),
+        body:    JSON.stringify({
+          github_url: url,
+          provider,
+          api_key: apiKey,
+        }),
       });
       const data = await res.json();
       setJobId(data.job_id);
@@ -119,7 +154,29 @@ export default function DashboardPage() {
           {/* Header */}
           <div className="card-header">
             <h1>Analyse a repository</h1>
-            <p>Paste any public GitHub URL. We'll index it and open a chat session.</p>
+            <p>Paste any public GitHub URL. Choose OpenAI or Gemini, add your own key, then index it and open a chat session.</p>
+          </div>
+
+          <div className="ai-settings">
+            <div className="settings-label">AI provider</div>
+            <div className="settings-row">
+              <select
+                className="provider-select"
+                value={provider}
+                onChange={e => setProvider(e.target.value as AIProvider)}
+              >
+                <option value="openai">OpenAI / ChatGPT</option>
+                <option value="gemini">Gemini</option>
+              </select>
+              <input
+                className="api-key-input"
+                type="password"
+                placeholder="Paste your API key"
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+              />
+            </div>
+            <p className="settings-note">Stored in this browser only. It is sent to your backend for the selected provider.</p>
           </div>
 
           {/* Input */}
@@ -317,6 +374,42 @@ export default function DashboardPage() {
 
         .card-header p { font-size: 14px; color: rgba(240,239,248,0.5); font-weight: 300; }
 
+        .ai-settings {
+          display: flex; flex-direction: column; gap: 10px;
+          padding: 14px; border-radius: 14px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .settings-label {
+          font-size: 10px; font-family: 'JetBrains Mono', monospace;
+          color: rgba(255,255,255,0.3); letter-spacing: 0.1em; text-transform: uppercase;
+        }
+
+        .settings-row {
+          display: grid; grid-template-columns: 170px 1fr; gap: 10px;
+        }
+
+        .provider-select,
+        .api-key-input {
+          width: 100%;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 10px; padding: 12px 14px;
+          color: #F0EFF8; outline: none;
+          font-family: 'DM Sans', system-ui, sans-serif; font-size: 13px;
+        }
+
+        .provider-select:focus,
+        .api-key-input:focus { border-color: rgba(123,110,246,0.5); }
+
+        .api-key-input::placeholder { color: rgba(255,255,255,0.2); }
+
+        .settings-note {
+          font-size: 11px; line-height: 1.5;
+          color: rgba(255,255,255,0.35);
+        }
+
         .input-group { display: flex; gap: 10px; }
 
         .url-input-wrap {
@@ -498,6 +591,7 @@ export default function DashboardPage() {
 
         @media (max-width: 520px) {
           .card { padding: 24px; }
+          .settings-row { grid-template-columns: 1fr; }
           .input-group { flex-direction: column; }
           .how-row { display: none; }
           .nav { padding: 0 20px; }
