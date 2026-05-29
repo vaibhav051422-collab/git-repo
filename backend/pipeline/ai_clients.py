@@ -184,10 +184,14 @@ def answer_text(
     prompt_parts.append(f"\nQuestion: {question}")
 
     chat_candidates = [chat_model]
-    if chat_model == "gemini-1.5-flash":
-        chat_candidates.append("gemini-1.5-flash-latest")
+    if chat_model == "gemini-3.5-flash":
+        chat_candidates.extend(["gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"])
+    elif chat_model == "gemini-2.5-flash":
+        chat_candidates.extend(["gemini-3.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"])
     elif chat_model == "gemini-1.5-flash-latest":
-        chat_candidates.append("gemini-1.5-flash")
+        chat_candidates.extend(["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-flash"])
+    elif chat_model == "gemini-1.5-flash":
+        chat_candidates.extend(["gemini-1.5-flash-latest", "gemini-2.5-flash", "gemini-3.5-flash"])
 
     response = None
     for candidate in chat_candidates:
