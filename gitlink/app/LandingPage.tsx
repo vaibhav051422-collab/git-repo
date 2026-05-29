@@ -1,7 +1,7 @@
 "use client";
 
-import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Particle = {
   id: number;
@@ -22,10 +22,10 @@ export default function LandingPage() {
   const [repoUrl, setRepoUrl] = useState("");
   const [particles, setParticles] = useState<Particle[]>([]);
   const particleIdRef = useRef(0);
+  const router = useRouter();
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    console.log("Exploring repo:", repoUrl);
+  const handleLetsBegin = () => {
+    router.push("/dashboard");
   };
 
   useEffect(() => {
@@ -130,7 +130,7 @@ export default function LandingPage() {
           </p>
 
           <div className="hero-tools" id="studio">
-            <form className="url-form" onSubmit={handleSubmit}>
+            <form className="url-form">
               <input
                 type="url"
                 value={repoUrl}
@@ -138,7 +138,7 @@ export default function LandingPage() {
                 placeholder="https://github.com/owner/repository"
                 required
               />
-              <button type="submit">Explore repo</button>
+              <button type="button" onClick={handleLetsBegin}>Let's Begin</button>
             </form>
 
             <div className="hero-actions">
