@@ -86,6 +86,12 @@ def embed_texts(texts: list[str], settings: AISettings) -> list[list[float]]:
         return [item.embedding for item in response.data]
 
     vectors: list[list[float]] = []
+    model_candidates = [model]
+    if model == "gemini-embedding-001":
+        model_candidates.append("gemini-embedding-2")
+    elif model == "gemini-embedding-2":
+        model_candidates.append("gemini-embedding-001")
+
     for text in texts:
         payload = {
             "content": {
@@ -102,15 +108,29 @@ def embed_texts(texts: list[str], settings: AISettings) -> list[list[float]]:
                 },
                 "outputDimensionality": 768,
             }
-        response = httpx.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent",
-            params={"key": api_key},
-            json=payload,
-            timeout=60.0,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        vectors.append(list(payload["embedding"]["values"]))
+
+        last_error: Exception | None = None
+        for candidate in model_candidates:
+            response = httpx.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:embedContent",
+                params={"key": api_key},
+                json=payload,
+                timeout=60.0,
+            )
+            if response.status_code == 404 and candidate != model_candidates[-1]:
+                last_error = httpx.HTTPStatusError(
+                    f"Gemini embedding model {candidate!r} was not found",
+                    request=response.request,
+                    response=response,
+                )
+                continue
+            response.raise_for_status()
+            payload = response.json()
+            vectors.append(list(payload["embedding"]["values"]))
+            break
+        else:
+            assert last_error is not None
+            raise last_error
     return vectors
 
 
@@ -163,20 +183,33 @@ def answer_text(
             prompt_parts.append(f"{message.get('role', 'user').title()}: {message.get('content', '')}\n")
     prompt_parts.append(f"\nQuestion: {question}")
 
-    response = httpx.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{chat_model}:generateContent",
-        params={"key": api_key},
-        json={
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": "".join(prompt_parts)}],
-                }
-            ]
-        },
-        timeout=90.0,
-    )
-    response.raise_for_status()
+    chat_candidates = [chat_model]
+    if chat_model == "gemini-1.5-flash":
+        chat_candidates.append("gemini-1.5-flash-latest")
+    elif chat_model == "gemini-1.5-flash-latest":
+        chat_candidates.append("gemini-1.5-flash")
+
+    response = None
+    for candidate in chat_candidates:
+        response = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent",
+            params={"key": api_key},
+            json={
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": "".join(prompt_parts)}],
+                    }
+                ]
+            },
+            timeout=90.0,
+        )
+        if response.status_code == 404 and candidate != chat_candidates[-1]:
+            continue
+        response.raise_for_status()
+        break
+
+    assert response is not None
     payload = response.json()
     if payload.get("error"):
         raise RuntimeError(payload["error"].get("message", "Gemini request failed"))
