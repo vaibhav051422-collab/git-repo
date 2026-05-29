@@ -39,7 +39,10 @@ export default function DashboardPage() {
 
   // ── Submit URL ─────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!url.trim()) return;
+    if (!url.trim()) {
+      setError("Paste a GitHub URL first.");
+      return;
+    }
     setError("");
     setStatus("pending");
     setRepoName(parseRepoName(url));
@@ -138,7 +141,7 @@ export default function DashboardPage() {
             <button
               className={`analyse-btn ${isRunning ? "loading" : ""}`}
               onClick={handleSubmit}
-              disabled={isRunning || !url.trim()}
+              disabled={isRunning}
             >
               {isRunning ? <span className="spinner" /> : "Analyse →"}
             </button>

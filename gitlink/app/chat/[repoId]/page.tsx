@@ -28,26 +28,21 @@ export default function ChatPage() {
   const bottomRef                 = useRef<HTMLDivElement>(null);
   const textareaRef               = useRef<HTMLTextAreaElement>(null);
 
-  // ── Scroll to bottom on new message ──────────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // ── Fetch repo name from backend ──────────────────────────────────────────
   useEffect(() => {
-    // We store repo name in localStorage from dashboard
     const stored = localStorage.getItem(`repo_name_${repoId}`);
     if (stored) setRepoName(stored);
   }, [repoId]);
 
-  // ── Auto-resize textarea ──────────────────────────────────────────────────
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px";
   };
 
-  // ── Send message ──────────────────────────────────────────────────────────
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
@@ -93,7 +88,6 @@ export default function ChatPage() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  // ── Score color ───────────────────────────────────────────────────────────
   const scoreColor = (s: number) =>
     s > 0.85 ? "#2DD4A0" : s > 0.7 ? "#A89DF9" : "rgba(255,255,255,0.3)";
 
@@ -101,7 +95,6 @@ export default function ChatPage() {
     <div className="chat-root">
       <div className="bg-grid" />
 
-      {/* ── Sidebar ── */}
       <aside className="sidebar">
         <a href="/" className="nav-logo">
           <span className="logo-icon">⬡</span> RepoChat
@@ -135,10 +128,7 @@ export default function ChatPage() {
         <a href="/dashboard" className="new-repo-btn">+ Analyse another repo</a>
       </aside>
 
-      {/* ── Chat area ── */}
       <div className="chat-area">
-
-        {/* Messages */}
         <div className="messages">
           {messages.length === 0 && (
             <div className="empty-state">
@@ -159,7 +149,6 @@ export default function ChatPage() {
                   <MessageContent content={msg.content} />
                 </div>
 
-                {/* Sources */}
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="sources">
                     <div className="sources-label">Sources</div>
@@ -180,7 +169,6 @@ export default function ChatPage() {
             </div>
           ))}
 
-          {/* Loading indicator */}
           {loading && (
             <div className="msg-row assistant">
               <div className="msg-avatar">R</div>
@@ -196,7 +184,6 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input bar */}
         <div className="input-bar">
           <div className="input-wrap">
             <textarea
@@ -224,7 +211,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <style>{`
+      <style>{` 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         .chat-root {
@@ -241,7 +228,6 @@ export default function ChatPage() {
           background-size: 48px 48px;
         }
 
-        /* ── Sidebar ── */
         .sidebar {
           width: 240px; flex-shrink: 0;
           border-right: 1px solid rgba(255,255,255,0.06);
@@ -302,7 +288,6 @@ export default function ChatPage() {
 
         .new-repo-btn:hover { background: rgba(123,110,246,0.2); }
 
-        /* ── Chat area ── */
         .chat-area {
           flex: 1; display: flex; flex-direction: column;
           overflow: hidden; position: relative; z-index: 1;
@@ -370,7 +355,6 @@ export default function ChatPage() {
           color: #F0EFF8;
         }
 
-        /* Code blocks inside assistant messages */
         .msg-text pre {
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.08);
@@ -386,7 +370,6 @@ export default function ChatPage() {
           border-radius: 4px; color: #A89DF9;
         }
 
-        /* Sources */
         .sources { display: flex; flex-direction: column; gap: 8px; }
 
         .sources-label {
@@ -426,7 +409,6 @@ export default function ChatPage() {
           30% { transform: translateY(-5px); }
         }
 
-        /* ── Input bar ── */
         .input-bar {
           padding: 16px 24px 20px;
           border-top: 1px solid rgba(255,255,255,0.06);
@@ -485,7 +467,6 @@ export default function ChatPage() {
   );
 }
 
-// ── Simple markdown-like renderer for code blocks ─────────────────────────────
 function MessageContent({ content }: { content: string }) {
   const parts = content.split(/(```[\s\S]*?```)/g);
   return (
@@ -493,7 +474,6 @@ function MessageContent({ content }: { content: string }) {
       {parts.map((part, i) => {
         if (part.startsWith("```")) {
           const lines = part.slice(3, -3).split("\n");
-          const lang  = lines[0].trim();
           const code  = lines.slice(1).join("\n");
           return <pre key={i}><code>{code}</code></pre>;
         }

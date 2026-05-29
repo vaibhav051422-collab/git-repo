@@ -1,0 +1,185 @@
+"""
+pipeline/retriever.py
+──────────────────────
+Given a user query + repo_id:
+  1. Embed the query
+  2. Retrieve top-k chunks from Pinecone
+  3. Feed retrieved context to GPT-4o
+  4. Return a cited answer
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from openai import OpenAI
+
+from config import (
+    OPENAI_API_KEY,
+    EMBED_MODEL,
+    CHAT_MODEL,
+    TOP_K,
+    PINECONE_API_KEY,
+    PINECONE_INDEX_NAME,
+)
+from pipeline.embedder import ensure_index
+
+# Clients 
+
+_oai = OpenAI(api_key=OPENAI_API_KEY)
+
+
+# Data models 
+
+@dataclass
+class SourceChunk:
+    file_path:  str
+    start_line: int
+    end_line:   int
+    language:   str
+    text:       str
+    score:      float
+
+
+@dataclass
+class ChatAnswer:
+    answer:   str
+    sources:  list[SourceChunk]
+    query:    str
+    repo_id:  str
+
+
+# System prompt
+
+SYSTEM_PROMPT = """\
+You are RepoChat, an expert code assistant. You answer questions about a \
+specific GitHub repository using retrieved source code chunks.
+
+Rules:
+- Always cite the file path and line numbers for every claim you make.
+- Format citations inline like: `src/auth/middleware.ts:42-58`
+- If the answer is not in the provided context, say so clearly. Do NOT \
+  hallucinate code or file paths.
+- Be concise. Developers value precision over verbosity.
+- Use code blocks (```language) when showing code snippets.
+- If multiple files are relevant, mention each one.
+"""
+
+
+#  Query embedding
+
+def _embed_query(query: str) -> list[float]:
+    response = _oai.embeddings.create(model=EMBED_MODEL, input=[query])
+    return response.data[0].embedding
+
+
+#  Retrieval 
+
+def _retrieve(query_vec: list[float], repo_id: str, top_k: int) -> list[SourceChunk]:
+    index   = ensure_index()
+    results = index.query(
+        vector    = query_vec,
+        top_k     = top_k,
+        namespace = repo_id,
+        include_metadata = True,
+    )
+
+    chunks: list[SourceChunk] = []
+    for match in results.matches:
+        meta = match.metadata or {}
+        chunks.append(SourceChunk(
+            file_path  = meta.get("file_path",  "unknown"),
+            start_line = int(meta.get("start_line", 0)),
+            end_line   = int(meta.get("end_line",   0)),
+            language   = meta.get("language",   "text"),
+            text       = meta.get("text",        ""),
+            score      = round(match.score, 4),
+        ))
+    return chunks
+
+
+#  Context builder
+
+def _build_context(chunks: list[SourceChunk]) -> str:
+    """Format retrieved chunks into an LLM-readable context block."""
+    parts = []
+    for i, c in enumerate(chunks, 1):
+        header = (
+            f"### Chunk {i} — {c.file_path} "
+            f"(lines {c.start_line}–{c.end_line}, score={c.score})"
+        )
+        parts.append(f"{header}\n```{c.language}\n{c.text}\n```")
+    return "\n\n".join(parts)
+
+
+#  Conversation history support 
+
+Message = dict  # {"role": "user"|"assistant", "content": str}
+
+
+#  Public API
+
+def answer_query(
+    query:   str,
+    repo_id: str,
+    history: list[Message] | None = None,
+    top_k:   int = TOP_K,
+) -> ChatAnswer:
+    """
+    Answer *query* about *repo_id*.
+
+    Args:
+        query:   The user's natural-language question.
+        repo_id: Pinecone namespace for this repo.
+        history: Prior conversation turns for multi-turn chat.
+        top_k:   Number of chunks to retrieve.
+
+    Returns:
+        ChatAnswer with the synthesised answer and cited sources.
+    """
+    # 1. Embed the query
+    query_vec = _embed_query(query)
+
+    # 2. Retrieve relevant chunks
+    sources = _retrieve(query_vec, repo_id, top_k)
+
+    if not sources:
+        return ChatAnswer(
+            answer  = "I couldn't find relevant code for that query in this repo.",
+            sources = [],
+            query   = query,
+            repo_id = repo_id,
+        )
+
+    # 3. Build context
+    context = _build_context(sources)
+
+    # 4. Construct messages
+    messages: list[Message] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    # Inject prior turns (last 6 to keep context window sane)
+    if history:
+        messages.extend(history[-6:])
+
+    # Final user turn includes retrieved context
+    user_content = (
+        f"Retrieved context from the repository:\n\n{context}\n\n"
+        f"---\n\nQuestion: {query}"
+    )
+    messages.append({"role": "user", "content": user_content})
+
+    # 5. Call GPT-4o
+    response = _oai.chat.completions.create(
+        model       = CHAT_MODEL,
+        messages    = messages,
+        temperature = 0.2,       # low temp for factual code answers
+        max_tokens  = 1_500,
+    )
+
+    answer_text = response.choices[0].message.content or ""
+
+    return ChatAnswer(
+        answer  = answer_text,
+        sources = sources,
+        query   = query,
+        repo_id = repo_id,
+    )
