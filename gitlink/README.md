@@ -30,7 +30,7 @@ Backend:
 - Host `backend/` on Render, Railway, Fly.io, or similar.
 - Use `uvicorn api.main:app --host 0.0.0.0 --port $PORT` as the start command.
 - Set `PINECONE_API_KEY`, `REDIS_URL`, and whichever AI key you want users to use.
-- Set `ALLOWED_ORIGINS` to your frontend URL.
+- Set `ALLOWED_ORIGINS` to your frontend URL, for example `https://git-repo-3y79.vercel.app`.
 
 ## Runtime Behavior
 
