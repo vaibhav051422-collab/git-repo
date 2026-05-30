@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 type AIProvider = "openai" | "gemini";
 
@@ -61,13 +61,13 @@ export default function DashboardPage() {
     );
   };
 
-  // ── Parse repo name from URL ──────────────────────────────────────────────
+  
   const parseRepoName = (ghUrl: string) => {
     const m = ghUrl.match(/github\.com\/([^/]+\/[^/]+)/);
     return m ? m[1] : ghUrl;
   };
 
-  // ── Submit URL ─────────────────────────────────────────────────────────────
+  
   const handleSubmit = async () => {
     if (!url.trim()) {
       setError("Paste a GitHub URL first.");
@@ -91,12 +91,12 @@ export default function DashboardPage() {
       const data = await res.json();
       setJobId(data.job_id);
     } catch (e) {
-      setError("Could not reach the backend. Is it running on port 8000?");
+      setError("Could not reach the backend. Check your backend URL and deployment status.");
       setStatus("idle");
     }
   };
 
-  // ── Poll status
+
   useEffect(() => {
     if (!jobId) return;
 
@@ -134,11 +134,11 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-root">
-      {/* ── BG grid ── */}
+    
       <div className="bg-grid" />
       <div className="bg-glow" />
 
-      {/* ── Nav ── */}
+      
       <nav className="nav">
         <a href="/" className="nav-logo">
           <span className="logo-icon">⬡</span>
@@ -147,11 +147,11 @@ export default function DashboardPage() {
         <span className="nav-tag">Dashboard</span>
       </nav>
 
-      {/* ── Main card ── */}
+      
       <main className="main">
         <div className="card">
 
-          {/* Header */}
+       
           <div className="card-header">
             <h1>Analyse a repository</h1>
             <p>Paste any public GitHub URL. Choose OpenAI or Gemini, add your own key, then index it and open a chat session.</p>
@@ -204,7 +204,7 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* Error */}
+         
           {error && (
             <div className="error-banner">
               <span>⚠</span> {error}
@@ -215,7 +215,7 @@ export default function DashboardPage() {
           {status !== "idle" && (
             <div className="progress-section">
 
-              {/* Repo name */}
+              
               {repoName && (
                 <div className="repo-label">
                   <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
@@ -225,7 +225,7 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Steps */}
+            
               <div className="steps-row">
                 {["cloning","chunking","embedding","done"].map((step, i) => {
                   const stepOrder = ["cloning","chunking","embedding","done"];
@@ -282,7 +282,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* How it works mini */}
+        
         {status === "idle" && (
           <div className="how-row">
             {[

@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 type AIProvider = "openai" | "gemini";
 
@@ -115,7 +115,7 @@ export default function ChatPage() {
     } catch {
       setMessages(prev => [...prev, {
         role:    "assistant",
-        content: "⚠ Could not reach the backend. Make sure it's running on port 8000.",
+        content: "⚠ Could not reach the backend. Check your backend URL and deployment status.",
       }]);
     } finally {
       setLoading(false);
