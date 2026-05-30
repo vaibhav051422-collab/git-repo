@@ -24,7 +24,7 @@ type Source = {
 
 export default function ChatPage() {
   const params                    = useParams();
-  const repoId                    = params.repoId as string;
+  const repoId                    = typeof params.repoId === "string" ? params.repoId : "";
   const [messages, setMessages]   = useState<Message[]>([]);
   const [input, setInput]         = useState("");
   const [loading, setLoading]     = useState(false);
@@ -34,12 +34,12 @@ export default function ChatPage() {
   const bottomRef                 = useRef<HTMLDivElement>(null);
   const textareaRef               = useRef<HTMLTextAreaElement>(null);
 
-  // ── Scroll to bottom on new message ──────────────────────────────────────
+  
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // ── Fetch repo name from backend ──────────────────────────────────────────
+
   useEffect(() => {
     // We store repo name in localStorage from dashboard
     const stored = localStorage.getItem(`repo_name_${repoId}`);
@@ -70,14 +70,14 @@ export default function ChatPage() {
     );
   };
 
-  // ── Auto-resize textarea ──────────────────────────────────────────────────
+  
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px";
   };
 
-  // ── Send message ──────────────────────────────────────────────────────────
+
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
@@ -126,7 +126,7 @@ export default function ChatPage() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  // ── Score color ───────────────────────────────────────────────────────────
+
   const scoreColor = (s: number) =>
     s > 0.85 ? "#2DD4A0" : s > 0.7 ? "#A89DF9" : "rgba(255,255,255,0.3)";
 
@@ -134,7 +134,7 @@ export default function ChatPage() {
     <div className="chat-root">
       <div className="bg-grid" />
 
-      {/* ── Sidebar ── */}
+    
       <aside className="sidebar">
         <a href="/" className="nav-logo">
           <span className="logo-icon">⬡</span> RepoChat
@@ -146,7 +146,7 @@ export default function ChatPage() {
             <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
               <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
             </svg>
-            {repoName || repoId.slice(0, 12) + "…"}
+            {repoName || (repoId ? repoId.slice(0, 12) + "…" : "Open a repo from the dashboard")}
           </div>
         </div>
 
@@ -190,10 +190,10 @@ export default function ChatPage() {
         <a href="/dashboard" className="new-repo-btn">+ Analyse another repo</a>
       </aside>
 
-      {/* ── Chat area ── */}
+      
       <div className="chat-area">
 
-        {/* Messages */}
+     
         <div className="messages">
           {messages.length === 0 && (
             <div className="empty-state">
@@ -214,7 +214,6 @@ export default function ChatPage() {
                   <MessageContent content={msg.content} />
                 </div>
 
-                {/* Sources */}
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="sources">
                     <div className="sources-label">Sources</div>
@@ -235,7 +234,7 @@ export default function ChatPage() {
             </div>
           ))}
 
-          {/* Loading indicator */}
+         
           {loading && (
             <div className="msg-row assistant">
               <div className="msg-avatar">R</div>
@@ -251,7 +250,6 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input bar */}
         <div className="input-bar">
           <div className="input-wrap">
             <textarea
