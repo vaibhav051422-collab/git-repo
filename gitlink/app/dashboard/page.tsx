@@ -176,7 +176,7 @@ export default function DashboardPage() {
                 onChange={e => setApiKey(e.target.value)}
               />
             </div>
-            <p className="settings-note">Stored in this browser only. It is sent to your backend for the selected provider.</p>
+            <p className="settings-note">Your api is not sent to our servers</p>
           </div>
 
           {/* Input */}
