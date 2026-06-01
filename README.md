@@ -1,4 +1,4 @@
-# RepoChat (Git profile analyzer)
+# RepoChat (Git Repo analyzer)
 
 Lightweight app that indexes a GitHub repository and exposes a chat-style interface to ask questions about the codebase. The workspace contains two deployable apps:
 
